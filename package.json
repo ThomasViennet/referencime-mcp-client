@@ -1,0 +1,44 @@
+{
+  "name": "@referencime/mcp-server",
+  "version": "1.1.4",
+  "description": "Referencime MCP Server for Claude Desktop - Connect your SEO data to Claude",
+  "type": "module",
+  "main": "./bin/start.js",
+  "bin": {
+    "referencime-mcp": "bin/start.js"
+  },
+  "scripts": {
+    "start": "node ./bin/start.js",
+    "test": "node test.js"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "claude-desktop",
+    "referencime",
+    "easy-links",
+    "seo",
+    "serp",
+    "keyword-analysis"
+  ],
+  "author": "Referencime Team",
+  "license": "MIT",
+  "homepage": "https://referencime.fr",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ThomasViennet/referencime-mcp-server.git"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.18.0",
+    "node-fetch": "^3.3.2",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.24.6"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "files": [
+    "bin/",
+    "README.md"
+  ]
+}
