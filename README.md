@@ -6,7 +6,7 @@ Intégrez vos données SEO Referencime directement dans Claude Desktop grâce au
 
 - [Claude Desktop](https://claude.ai/download) avec un abonnement Pro ou Maximum
 - [Node.js](https://nodejs.org/) version 18 ou supérieure
-- Une clé API Referencime (disponible dans votre compte Easy Links)
+- Une clé API Referencime (disponible dans votre compte)
 
 ## ⚡ Installation rapide (2 étapes)
 
@@ -44,7 +44,7 @@ Intégrez vos données SEO Referencime directement dans Claude Desktop grâce au
 
 ## 🔑 Où trouver votre clé API ?
 
-Connectez-vous à votre compte Easy Links sur [referencime.fr](https://referencime.fr) et allez dans la section API de votre profil.
+Connectez-vous à votre compte sur [referencime.fr](https://referencime.fr) et allez dans la section API de votre profil.
 
 ## 🛠️ Outils disponibles
 

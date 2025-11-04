@@ -10,25 +10,29 @@ import { z } from "zod";
 import { zodToJsonSchema } from "zod-to-json-schema";
 
 /**
- * Referencime MCP Server - Version finale avec SDK officiel
+ * Referencime MCP Server - Version refactorisée
  * Compatible avec Claude Desktop
+ * Architecture simplifiée avec 5 endpoints essentiels
  */
 
 // Schema definitions pour nos outils SEO
-const AnalyzeKeywordArgsSchema = z.object({
-  keyword: z.string().describe('Le mot-clé à analyser'),
+const ListWebsitesByUserArgsSchema = z.object({
+  // Aucun paramètre requis - utilise la clé API pour identifier l'utilisateur
+});
+
+const ListCategoriesByWebsiteArgsSchema = z.object({
   website_id: z.number().describe('ID du site web dans Referencime')
 });
 
-const PositionEvolutionArgsSchema = z.object({
-  keyword: z.string().describe('Le mot-clé à analyser'),
+const ListKeywordsByWebsiteArgsSchema = z.object({
   website_id: z.number().describe('ID du site web dans Referencime'),
-  period: z.string().optional().default('30days').describe('Période d\'analyse (7days, 30days, 90days)')
+  include_metrics: z.boolean().optional().default(false).describe('Inclure les volumes de recherche Google Ads')
 });
 
-const CompareKeywordsArgsSchema = z.object({
-  keywords: z.array(z.string()).describe('Liste des mots-clés à comparer'),
-  website_id: z.number().describe('ID du site web dans Referencime')
+const ListKeywordsByCategoriesByWebsiteArgsSchema = z.object({
+  website_id: z.number().describe('ID du site web dans Referencime'),
+  include_performance: z.boolean().optional().default(true).describe('Inclure les métriques de performance GSC'),
+  days: z.number().optional().default(30).describe('Période pour les métriques GSC (en jours)')
 });
 
 const WebsiteSummaryArgsSchema = z.object({
@@ -40,29 +44,11 @@ const WebsiteSummaryArgsSchema = z.object({
   compare_end_date: z.string().optional().describe('Date de fin de comparaison au format YYYY-MM-DD')
 });
 
-const RankingChangesArgsSchema = z.object({
-  website_id: z.number().describe('ID du site web dans Referencime'),
-  days: z.number().optional().default(7).describe('Nombre de jours à analyser'),
-  threshold: z.number().optional().default(3).describe('Seuil de changement de position'),
-  start_date: z.string().optional().describe('Date de début au format YYYY-MM-DD'),
-  end_date: z.string().optional().describe('Date de fin au format YYYY-MM-DD')
-});
-
-const ListUserWebsitesArgsSchema = z.object({
-  // Aucun paramètre requis - utilise la clé API pour identifier l'utilisateur
-});
-
-const GetKeywordsByCategoriesArgsSchema = z.object({
-  website_id: z.number().describe('ID du site web dans Referencime'),
-  include_performance: z.boolean().optional().default(true).describe('Inclure les métriques de performance GSC'),
-  days: z.number().optional().default(30).describe('Période pour les métriques (en jours)')
-});
-
 // Configuration du serveur
 const server = new Server(
   {
     name: "referencime-mcp-server",
-    version: "1.1.3",
+    version: "2.0.0",
   },
   {
     capabilities: {
@@ -97,26 +83,20 @@ async function callReferencimeAPI(toolName, args) {
 
     // Mappage des outils MCP vers les endpoints WordPress
     switch (toolName) {
-      case 'analyze_keyword_performance':
-        endpoint = '/ai/analyze-keyword-performance';
+      case 'list_websites_by_user':
+        endpoint = '/ai/list-websites-by-user';
         break;
-      case 'get_position_evolution':
-        endpoint = '/ai/get-position-evolution';
+      case 'list_categories_by_website':
+        endpoint = '/ai/list-categories-by-website';
         break;
-      case 'compare_keywords_performance':
-        endpoint = '/ai/compare-keywords-performance';
+      case 'list_keywords_by_website':
+        endpoint = '/ai/list-keywords-by-website';
+        break;
+      case 'list_keywords_by_categories_by_website':
+        endpoint = '/ai/list-keywords-by-categories-by-website';
         break;
       case 'get_website_performance_summary':
         endpoint = '/ai/get-website-performance-summary';
-        break;
-      case 'detect_ranking_changes':
-        endpoint = '/ai/detect-ranking-changes';
-        break;
-      case 'list_user_websites':
-        endpoint = '/ai/list-user-websites';
-        break;
-      case 'get_keywords_by_categories':
-        endpoint = '/ai/get-keywords-by-categories';
         break;
       default:
         throw new Error(`Outil inconnu: ${toolName}`);
@@ -152,39 +132,29 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
     tools: [
       {
-        name: "analyze_keyword_performance",
-        description: "Analyse complète des performances d'un mot-clé spécifique : position actuelle, volume de recherche, difficulté, trafic estimé et tendances.",
-        inputSchema: zodToJsonSchema(AnalyzeKeywordArgsSchema),
+        name: "list_websites_by_user",
+        description: "Liste tous les sites web auxquels l'utilisateur a accès dans son compte Referencime avec leurs IDs, noms de domaine et dates de création.",
+        inputSchema: zodToJsonSchema(ListWebsitesByUserArgsSchema),
       },
       {
-        name: "get_position_evolution",
-        description: "Évolution historique des positions d'un mot-clé dans les SERP avec données de clics, impressions et analyse des tendances sur la période sélectionnée.",
-        inputSchema: zodToJsonSchema(PositionEvolutionArgsSchema),
+        name: "list_categories_by_website",
+        description: "Liste toutes les catégories de mots-clés d'un site web avec le nombre de mots-clés dans chaque catégorie pour une organisation thématique SEO.",
+        inputSchema: zodToJsonSchema(ListCategoriesByWebsiteArgsSchema),
       },
       {
-        name: "compare_keywords_performance",
-        description: "Comparaison détaillée des performances de plusieurs mots-clés avec recommandations d'optimisation et identification du meilleur performer.",
-        inputSchema: zodToJsonSchema(CompareKeywordsArgsSchema),
+        name: "list_keywords_by_website",
+        description: "Liste tous les mots-clés suivis pour un site web avec leur catégorie et optionnellement leurs volumes de recherche Google Ads.",
+        inputSchema: zodToJsonSchema(ListKeywordsByWebsiteArgsSchema),
+      },
+      {
+        name: "list_keywords_by_categories_by_website",
+        description: "Récupère tous les mots-clés d'un site web organisés par catégories avec métriques de performance GSC (positions, clics, impressions, CTR) et analyse thématique SEO complète.",
+        inputSchema: zodToJsonSchema(ListKeywordsByCategoriesByWebsiteArgsSchema),
       },
       {
         name: "get_website_performance_summary",
-        description: "Tableau de bord complet des performances SEO d'un site web : métriques globales, évolution des positions et mots-clés les plus performants.",
+        description: "Tableau de bord complet des performances SEO d'un site web : métriques globales GSC, distribution des positions et mots-clés les plus performants.",
         inputSchema: zodToJsonSchema(WebsiteSummaryArgsSchema),
-      },
-      {
-        name: "detect_ranking_changes",
-        description: "Détection automatique des changements significatifs de positions SERP avec alertes et recommandations d'actions prioritaires.",
-        inputSchema: zodToJsonSchema(RankingChangesArgsSchema),
-      },
-      {
-        name: "list_user_websites",
-        description: "Liste tous les sites web auxquels l'utilisateur a accès dans son compte Referencime avec leurs IDs et noms de domaine.",
-        inputSchema: zodToJsonSchema(ListUserWebsitesArgsSchema),
-      },
-      {
-        name: "get_keywords_by_categories",
-        description: "Récupère tous les mots-clés d'un site web organisés par catégories avec métriques de performance GSC optionnelles et analyse thématique SEO.",
-        inputSchema: zodToJsonSchema(GetKeywordsByCategoriesArgsSchema),
       },
     ],
   };
@@ -196,82 +166,188 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
     const { name, arguments: args } = request.params;
 
     switch (name) {
-      case "analyze_keyword_performance": {
-        const parsed = AnalyzeKeywordArgsSchema.safeParse(args);
+      case "list_websites_by_user": {
+        const parsed = ListWebsitesByUserArgsSchema.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Arguments invalides pour analyze_keyword_performance: ${parsed.error.message}`);
+          throw new Error(`Arguments invalides pour list_websites_by_user: ${parsed.error.message}`);
         }
         
         const result = await callReferencimeAPI(name, parsed.data);
-        return {
-          content: [
-            {
-              type: "text",
-              text: `🔍 **ANALYSE COMPLÈTE DU MOT-CLÉ "${parsed.data.keyword.toUpperCase()}"**\n\n` +
-                    `📊 **Métriques actuelles :**\n` +
-                    `• Position actuelle : #${result.current_position}\n` +
-                    `• Volume de recherche : ${result.search_volume.toLocaleString()} recherches/mois\n` +
-                    `• Difficulté SEO : ${result.difficulty_score}/100\n` +
-                    `• Trafic estimé : ${result.estimated_traffic.toLocaleString()} visites/mois\n` +
-                    `• Niveau de concurrence : ${result.competition_level}\n` +
-                    `• Tendance : ${result.trend}\n\n` +
-                    `📅 **Dernière mise à jour :** ${new Date(result.last_updated).toLocaleString('fr-FR')}\n` +
-                    `🌐 **Site web ID :** ${result.website_id}`
-            }
-          ]
-        };
-      }
-
-      case "get_position_evolution": {
-        const parsed = PositionEvolutionArgsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Arguments invalides pour get_position_evolution: ${parsed.error.message}`);
-        }
-        
-        const result = await callReferencimeAPI(name, parsed.data);
-        const chartData = result.historical_positions.map(p => 
-          `${p.date}: Position #${p.position} (${p.clicks} clics, ${p.impressions} impressions)`
+        const websitesList = result.websites.map(w => 
+          `• **${w.domain}** (ID: ${w.id})${w.is_favorite ? ' ⭐' : ''} - Créé le ${new Date(w.created_date).toLocaleDateString('fr-FR')}`
         ).join('\n');
         
         return {
           content: [
             {
               type: "text",
-              text: `📈 **ÉVOLUTION DES POSITIONS - "${parsed.data.keyword.toUpperCase()}"**\n\n` +
-                    `⏱️ **Période analysée :** ${result.period}\n` +
-                    `📊 **Statistiques :**\n` +
-                    `• Meilleure position : #${result.best_position}\n` +
-                    `• Position moyenne : #${result.average_position}\n` +
-                    `• Évolution récente : ${result.position_change > 0 ? '+' : ''}${result.position_change} positions\n\n` +
-                    `📅 **Historique détaillé :**\n${chartData}\n\n` +
-                    `🌐 **Site web ID :** ${result.website_id}`
+              text: `🌐 **VOS SITES WEB REFERENCIME**\n\n` +
+                    `👤 **Utilisateur ID :** ${result.user_id}\n` +
+                    `📊 **Nombre de sites :** ${result.websites_count}\n\n` +
+                    `📋 **Liste des sites :**\n${websitesList}\n\n` +
+                    `💡 **Utilisation :** Utilisez l'ID du site dans les autres outils d'analyse SEO.`
             }
           ]
         };
       }
 
-      case "compare_keywords_performance": {
-        const parsed = CompareKeywordsArgsSchema.safeParse(args);
+      case "list_categories_by_website": {
+        const parsed = ListCategoriesByWebsiteArgsSchema.safeParse(args);
         if (!parsed.success) {
-          throw new Error(`Arguments invalides pour compare_keywords_performance: ${parsed.error.message}`);
+          throw new Error(`Arguments invalides pour list_categories_by_website: ${parsed.error.message}`);
         }
         
         const result = await callReferencimeAPI(name, parsed.data);
-        const comparison = result.keywords_analysis.map(k => 
-          `• **${k.keyword}**: Position #${k.position} | Volume: ${k.search_volume.toLocaleString()} | Trafic: ${k.estimated_traffic} | Tendance: ${k.trend_direction} (${k.monthly_change > 0 ? '+' : ''}${k.monthly_change})`
+        const categoriesList = result.categories.map(c => 
+          `• **${c.name}** (${c.keywords_count} mots-clés)`
         ).join('\n');
         
         return {
           content: [
             {
               type: "text",
-              text: `⚖️ **COMPARAISON DE ${result.total_analyzed} MOTS-CLÉS**\n\n` +
-                    `📊 **Analyse comparative :**\n${comparison}\n\n` +
-                    `🏆 **Meilleur performer :** ${result.best_performer}\n\n` +
-                    `💡 **Recommandations :**\n` +
-                    result.recommendations.map(r => `• ${r}`).join('\n') + '\n\n' +
-                    `📅 **Date d'analyse :** ${new Date(result.comparison_date).toLocaleDateString('fr-FR')}\n` +
-                    `🌐 **Site web ID :** ${result.website_id}`
+              text: `🗂️ **CATÉGORIES DE MOTS-CLÉS - SITE #${result.website_id}**\n\n` +
+                    `📊 **Nombre de catégories :** ${result.categories_count}\n\n` +
+                    `📋 **Liste des catégories :**\n${categoriesList}\n\n` +
+                    `💡 **Organisation :** Catégorisez vos mots-clés par thème pour une meilleure stratégie SEO.`
+            }
+          ]
+        };
+      }
+
+      case "list_keywords_by_website": {
+        const parsed = ListKeywordsByWebsiteArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Arguments invalides pour list_keywords_by_website: ${parsed.error.message}`);
+        }
+        
+        const result = await callReferencimeAPI(name, parsed.data);
+        
+        // Grouper par catégorie pour un affichage organisé
+        const byCategory = {};
+        result.keywords.forEach(k => {
+          const catName = k.category_name || 'Non catégorisé';
+          if (!byCategory[catName]) byCategory[catName] = [];
+          byCategory[catName].push(k);
+        });
+        
+        const keywordsList = Object.entries(byCategory).map(([catName, keywords]) => {
+          const keywordsText = keywords.slice(0, 20).map(k => {
+            let line = `   • ${k.keyword}`;
+            if (result.include_metrics && k.search_volume) {
+              line += ` (Vol: ${k.search_volume.toLocaleString()})`;
+            }
+            return line;
+          }).join('\n');
+          
+          const truncated = keywords.length > 20 ? `\n   ... et ${keywords.length - 20} autres mots-clés` : '';
+          return `\n**${catName}** (${keywords.length} mots-clés):\n${keywordsText}${truncated}`;
+        }).join('\n');
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `🔤 **MOTS-CLÉS - SITE #${result.website_id}**\n\n` +
+                    `📊 **Total mots-clés :** ${result.keywords_count}\n` +
+                    `📈 **Volumes de recherche :** ${result.include_metrics ? 'Inclus' : 'Non inclus'}\n` +
+                    `${keywordsList}\n\n` +
+                    `💡 **Astuce :** Utilisez list_keywords_by_categories_by_website pour des métriques de performance détaillées.`
+            }
+          ]
+        };
+      }
+
+      case "list_keywords_by_categories_by_website": {
+        const parsed = ListKeywordsByCategoriesByWebsiteArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Arguments invalides pour list_keywords_by_categories_by_website: ${parsed.error.message}`);
+        }
+        
+        const result = await callReferencimeAPI(name, parsed.data);
+        
+        if (!result.has_gsc_data) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `📂 **MOTS-CLÉS PAR CATÉGORIES - SITE #${result.website_id}**\n\n` +
+                      `⚠️ **Données GSC non disponibles**\n\n` +
+                      `📊 **Période :** ${result.period_days} jours\n` +
+                      `📈 **Total mots-clés :** ${result.summary.total_keywords}\n` +
+                      `🗂️ **Catégories :** ${result.summary.total_categories}\n\n` +
+                      `💡 **Cause :** Pas de propriété Google Search Console associée.\n\n` +
+                      `📋 **Structure :**\n` +
+                      result.categories.map(cat => 
+                        `• **${cat.category_name}**: ${cat.keywords_count} mots-clés`
+                      ).join('\n')
+              }
+            ]
+          };
+        }
+        
+        // Formatage des catégories avec performances
+        const categoriesText = result.categories.map(category => {
+          const categoryHeader = `\n🗂️ **${(category.category_name || 'Sans nom').toUpperCase()}** (${category.keywords_count} mots-clés)\n` +
+                               `${'─'.repeat(50)}\n`;
+          
+          if (category.keywords_count === 0) {
+            return categoryHeader + `   • Aucun mot-clé\n`;
+          }
+          
+          const keywordsText = category.keywords.slice(0, 10).map(keyword => {
+            let line = `   • **${keyword.keyword}**`;
+            
+            if (result.include_performance && keyword.performance_metrics) {
+              const perf = keyword.performance_metrics;
+              if (perf.has_data) {
+                line += ` | #${perf.position || 'N/A'} | ${perf.clicks} clics | ${perf.impressions} impr`;
+                if (perf.ctr > 0) line += ` | CTR: ${(perf.ctr * 100).toFixed(1)}%`;
+              } else {
+                line += ` | Pas de données GSC`;
+              }
+            }
+            
+            if (keyword.search_volume > 0) {
+              line += ` | Vol: ${keyword.search_volume.toLocaleString()}`;
+            }
+            
+            return line;
+          }).join('\n');
+          
+          const truncated = category.keywords_count > 10 ? 
+            `\n   ... et ${category.keywords_count - 10} autres` : '';
+          
+          return categoryHeader + keywordsText + truncated + '\n';
+        }).join('');
+        
+        // Statistiques globales
+        const totalWithPosition = result.categories.flatMap(cat => 
+          cat.keywords.filter(k => k.performance_metrics?.position > 0)
+        ).length;
+        
+        const avgPosition = totalWithPosition > 0 ? 
+          result.categories.flatMap(cat => 
+            cat.keywords.filter(k => k.performance_metrics?.position > 0)
+              .map(k => k.performance_metrics.position)
+          ).reduce((sum, pos) => sum + pos, 0) / totalWithPosition : null;
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `📂 **MOTS-CLÉS PAR CATÉGORIES - SITE #${result.website_id}**\n\n` +
+                    `📅 **Période :** ${result.period_days} jours\n` +
+                    `📊 **Métriques GSC :** ${result.include_performance ? 'Incluses' : 'Désactivées'}\n\n` +
+                    `📈 **Résumé :**\n` +
+                    `• Total mots-clés : ${result.summary.total_keywords.toLocaleString()}\n` +
+                    `• Catégories : ${result.summary.total_categories}\n` +
+                    `• Non catégorisés : ${result.summary.uncategorized_keywords}\n` +
+                    `• Avec position GSC : ${totalWithPosition}\n` +
+                    (avgPosition ? `• Position moyenne : #${avgPosition.toFixed(1)}\n` : '') +
+                    `\n${categoriesText}\n` +
+                    `📅 **MAJ :** ${new Date(result.last_updated).toLocaleString('fr-FR')}\n\n` +
+                    `💡 **Astuce :** Identifiez vos thématiques SEO les plus performantes !`
             }
           ]
         };
@@ -292,23 +368,73 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
                 type: "text",
                 text: `🌐 **TABLEAU DE BORD SEO - SITE #${result.website_id}**\n\n` +
                       `⚠️ **Aucune donnée disponible**\n\n` +
-                      `📊 **Période analysée :** ${result.period_days} jours\n` +
-                      `📈 **Mots-clés dans la base :** ${result.overall_metrics.total_keywords}\n\n` +
-                      `💡 **Cause possible :** Pas de propriété Google Search Console associée ou données GSC non disponibles pour cette période.`
+                      `📊 **Période :** ${result.period_days || result.period?.days || 'N/A'} jours\n` +
+                      `📈 **Mots-clés :** ${result.overall_metrics.total_keywords}\n\n` +
+                      `💡 **Cause :** Pas de propriété GSC ou données non disponibles.`
               }
             ]
           };
         }
         
         const topKeywords = result.top_performing_keywords?.map(k => 
-          `• ${k.keyword} (#${k.position}, ${k.clicks} clics)`
-        ).join('\n') || 'Aucun mot-clé avec des clics';
+          `• ${k.keyword} (#${k.position.toFixed(1)}, ${k.clicks} clics)`
+        ).join('\n') || 'Aucun';
         
-        // Ajouter les informations de dates si disponibles
-        let dateInfo = `📅 **Période analysée :** ${result.period_days} jours`;
-        if (parsed.data.start_date && parsed.data.end_date) {
-          dateInfo = `📅 **Période analysée :** du ${parsed.data.start_date} au ${parsed.data.end_date} (${result.period_days} jours)`;
+        // Formatage des périodes (nouveau format API)
+        let dateInfo = '';
+        if (result.period) {
+          dateInfo = `📅 **Période :** du ${result.period.start_date} au ${result.period.end_date} (${result.period.days} jours)`;
+          if (result.compare_period) {
+            dateInfo += `\n📅 **Comparaison :** du ${result.compare_period.start_date} au ${result.compare_period.end_date}`;
+          }
+        } else {
+          // Fallback ancien format
+          dateInfo = `📅 **Période :** ${result.period_days} jours`;
         }
+        
+        // Formatage des catégories si présentes
+        let categoriesSection = '';
+        if (result.categories && result.categories.length > 0) {
+          categoriesSection = '\n\n📂 **PERFORMANCES PAR CATÉGORIE :**\n\n';
+          result.categories.forEach((cat, index) => {
+            categoriesSection += `**${index + 1}. ${cat.category_name}** (${cat.keywords_count} mots-clés)\n`;
+            categoriesSection += `   • Position moyenne : ${cat.metrics.position.current ? '#' + cat.metrics.position.current : 'N/A'}`;
+            if (cat.metrics.position.compare && cat.metrics.position.evolution) {
+              const evol = cat.metrics.position.evolution;
+              const evolutionText = evol > 0 ? `📈 +${evol}` : evol < 0 ? `📉 ${evol}` : '➡️ =';
+              categoriesSection += ` (${evolutionText} vs période précédente)`;
+            }
+            categoriesSection += `\n   • Clics : ${cat.metrics.clicks.current}`;
+            if (cat.metrics.clicks.evolution_percent !== null) {
+              const evol = cat.metrics.clicks.evolution_percent;
+              const sign = evol >= 0 ? '+' : '';
+              categoriesSection += ` (${sign}${evol.toFixed(1)}%)`;
+            }
+            categoriesSection += `\n   • Impressions : ${cat.metrics.impressions.current.toLocaleString()}`;
+            if (cat.metrics.impressions.evolution_percent !== null) {
+              const evol = cat.metrics.impressions.evolution_percent;
+              const sign = evol >= 0 ? '+' : '';
+              categoriesSection += ` (${sign}${evol.toFixed(1)}%)`;
+            }
+            if (cat.top_keywords && cat.top_keywords.length > 0) {
+              categoriesSection += `\n   🏆 Top mots-clés : ${cat.top_keywords.slice(0, 3).map(k => k.keyword).join(', ')}`;
+            }
+            categoriesSection += '\n\n';
+          });
+        }
+        
+        // Formater les métriques avec évolutions (calculées par le backend)
+        const formatMetric = (metric) => {
+          if (typeof metric === 'number') return metric.toLocaleString();
+          if (typeof metric === 'object' && metric.current !== undefined) {
+            let text = metric.current.toLocaleString();
+            if (metric.evolution_text) {
+              text += ` (${metric.evolution_text})`;
+            }
+            return text;
+          }
+          return metric;
+        };
         
         return {
           content: [
@@ -317,208 +443,19 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
               text: `🌐 **TABLEAU DE BORD SEO - SITE #${result.website_id}**\n\n` +
                     `${dateInfo}\n\n` +
                     `📊 **Métriques globales :**\n` +
-                    `• Mots-clés suivis : ${result.overall_metrics.total_keywords.toLocaleString()}\n` +
-                    `• Total des clics : ${result.overall_metrics.total_clicks.toLocaleString()}\n` +
-                    `• Total des impressions : ${result.overall_metrics.total_impressions.toLocaleString()}\n` +
-                    `• Position moyenne : ${result.overall_metrics.average_position ? '#' + result.overall_metrics.average_position : 'Non disponible'}\n` +
-                    `• CTR moyen : ${result.overall_metrics.average_ctr ? (result.overall_metrics.average_ctr * 100).toFixed(2) + '%' : 'Non disponible'}\n\n` +
+                    `• Mots-clés suivis : ${result.overall_metrics.total_keywords}\n` +
+                    `• Total clics : ${formatMetric(result.overall_metrics.total_clicks)}\n` +
+                    `• Total impressions : ${formatMetric(result.overall_metrics.total_impressions)}\n` +
+                    `• Position moyenne : ${result.overall_metrics.average_position ? (typeof result.overall_metrics.average_position === 'object' ? '#' + result.overall_metrics.average_position.current + (result.overall_metrics.average_position.evolution_text ? ' (' + result.overall_metrics.average_position.evolution_text + ')' : '') : '#' + result.overall_metrics.average_position) : 'N/A'}\n` +
+                    `• CTR moyen : ${result.overall_metrics.average_ctr ? (typeof result.overall_metrics.average_ctr === 'object' ? (result.overall_metrics.average_ctr.current * 100).toFixed(2) + '%' + (result.overall_metrics.average_ctr.evolution_text ? ' (' + result.overall_metrics.average_ctr.evolution_text + ')' : '') : (result.overall_metrics.average_ctr * 100).toFixed(2) + '%') : 'N/A'}\n\n` +
                     `📈 **Distribution des positions :**\n` +
                     `• Top 3 : ${result.performance_changes.position_distribution.top3} mots-clés\n` +
                     `• Top 10 : ${result.performance_changes.position_distribution.top10} mots-clés\n` +
                     `• Top 20 : ${result.performance_changes.position_distribution.top20} mots-clés\n` +
                     `• Top 50 : ${result.performance_changes.position_distribution.top50} mots-clés\n` +
                     `• Top 100 : ${result.performance_changes.position_distribution.top100} mots-clés\n\n` +
-                    `🏆 **Mots-clés les plus performants :**\n${topKeywords}`
-            }
-          ]
-        };
-      }
-
-      case "detect_ranking_changes": {
-        const parsed = RankingChangesArgsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Arguments invalides pour detect_ranking_changes: ${parsed.error.message}`);
-        }
-        
-        const result = await callReferencimeAPI(name, parsed.data);
-        
-        if (!result.has_data) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `🔄 **DÉTECTION DE CHANGEMENTS SIGNIFICATIFS**\n\n` +
-                      `⚠️ **Aucune donnée disponible**\n\n` +
-                      `📊 **Site web ID :** ${result.website_id}\n` +
-                      `📅 **Période :** ${result.period_days} jours\n` +
-                      `🎯 **Seuil :** ±${result.threshold} positions\n\n` +
-                      `💡 **Cause possible :** Pas de propriété Google Search Console associée ou données GSC insuffisantes.`
-              }
-            ]
-          };
-        }
-        
-        const changes = result.significant_changes.map(c => {
-          let changeText = '';
-          if (c.change_type === 'improvement') {
-            changeText = `📈 **${c.keyword}**: #${c.old_position} → #${c.new_position} (${Math.abs(c.change)} positions vers le haut)`;
-          } else if (c.change_type === 'drop') {
-            changeText = `📉 **${c.keyword}**: #${c.old_position} → #${c.new_position} (+${c.change} positions vers le bas)`;
-          } else if (c.change_type === 'new_entry') {
-            changeText = `🆕 **${c.keyword}**: Nouveau classement à la position #${c.new_position}`;
-          } else if (c.change_type === 'disappeared') {
-            changeText = `❌ **${c.keyword}**: A disparu du classement (était à la position #${c.old_position})`;
-          }
-          
-          if (c.clicks > 0 || c.impressions > 0) {
-            changeText += ` | ${c.clicks} clics, ${c.impressions} impressions`;
-          }
-          
-          if (c.significance === 'major') {
-            changeText = '🚨 ' + changeText + ' **[CHANGEMENT MAJEUR]**';
-          }
-          
-          return changeText;
-        }).join('\n');
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: `🔄 **DÉTECTION DE CHANGEMENTS SIGNIFICATIFS**\n\n` +
-                    `🌐 **Site web ID :** ${result.website_id}\n` +
-                    `📅 **Période analysée :** ${result.period_days} jours\n` +
-                    `🎯 **Seuil de détection :** ±${result.threshold} positions\n\n` +
-                    `📊 **Résumé :**\n` +
-                    `• Total changements détectés : ${result.summary.changes_detected}\n` +
-                    `• 📈 Améliorations : ${result.summary.improvements}\n` +
-                    `• 📉 Chutes : ${result.summary.drops}\n` +
-                    `• 🚨 Changements majeurs : ${result.summary.major_changes}\n` +
-                    `• 🆕 Nouvelles entrées : ${result.summary.new_entries}\n` +
-                    `• ❌ Disparitions : ${result.summary.disappeared}\n\n` +
-                    (changes ? `📋 **Changements détectés :**\n${changes}` : '✅ **Aucun changement significatif détecté**')
-            }
-          ]
-        };
-      }
-
-      case "list_user_websites": {
-        const parsed = ListUserWebsitesArgsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Arguments invalides pour list_user_websites: ${parsed.error.message}`);
-        }
-        
-        const result = await callReferencimeAPI(name, parsed.data);
-        const websitesList = result.websites.map(w => 
-          `• **${w.domain}** (ID: ${w.id})${w.is_favorite ? ' ⭐' : ''}`
-        ).join('\n');
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: `🌐 **VOS SITES WEB REFERENCIME**\n\n` +
-                    `👤 **Utilisateur ID :** ${result.user_id}\n` +
-                    `📊 **Nombre de sites :** ${result.websites_count}\n\n` +
-                    `📋 **Liste des sites :**\n${websitesList}\n\n` +
-                    `💡 **Utilisation :** Utilisez l'ID du site dans les autres outils d'analyse SEO.`
-            }
-          ]
-        };
-      }
-
-      case "get_keywords_by_categories": {
-        const parsed = GetKeywordsByCategoriesArgsSchema.safeParse(args);
-        if (!parsed.success) {
-          throw new Error(`Arguments invalides pour get_keywords_by_categories: ${parsed.error.message}`);
-        }
-        
-        const result = await callReferencimeAPI(name, parsed.data);
-        
-        if (!result.has_gsc_data) {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `📂 **MOTS-CLÉS PAR CATÉGORIES - SITE #${result.website_id}**\n\n` +
-                      `⚠️ **Données GSC non disponibles**\n\n` +
-                      `📊 **Période analysée :** ${result.period_days} jours\n` +
-                      `📈 **Total mots-clés :** ${result.summary.total_keywords}\n` +
-                      `🗂️ **Catégories :** ${result.summary.total_categories}\n\n` +
-                      `💡 **Cause :** Pas de propriété Google Search Console associée au site.\n\n` +
-                      `📋 **Structure disponible :**\n` +
-                      result.categories.map(cat => 
-                        `• **${cat.category_name}**: ${cat.keywords_count} mots-clés`
-                      ).join('\n')
-              }
-            ]
-          };
-        }
-        
-        // Formatage des catégories avec performances
-        const categoriesText = result.categories.map(category => {
-          const categoryHeader = `\n🗂️ **${category.category_name.toUpperCase()}** (${category.keywords_count} mots-clés)\n` +
-                               `${'─'.repeat(50)}\n`;
-          
-          if (category.keywords_count === 0) {
-            return categoryHeader + `   • Aucun mot-clé dans cette catégorie\n`;
-          }
-          
-          const keywordsText = category.keywords.slice(0, 10).map(keyword => {
-            let keywordLine = `   • **${keyword.keyword}**`;
-            
-            if (result.include_performance && keyword.performance_metrics) {
-              const perf = keyword.performance_metrics;
-              if (perf.has_data) {
-                keywordLine += ` | Pos: #${perf.position || 'N/A'} | ${perf.clicks} clics | ${perf.impressions} impr`;
-                if (perf.ctr > 0) {
-                  keywordLine += ` | CTR: ${(perf.ctr * 100).toFixed(1)}%`;
-                }
-              } else {
-                keywordLine += ` | Pas de données GSC`;
-              }
-            }
-            
-            if (keyword.search_volume > 0) {
-              keywordLine += ` | Vol: ${keyword.search_volume.toLocaleString()}`;
-            }
-            
-            return keywordLine;
-          }).join('\n');
-          
-          const truncatedNote = category.keywords_count > 10 ? 
-            `\n   ... et ${category.keywords_count - 10} autres mots-clés` : '';
-          
-          return categoryHeader + keywordsText + truncatedNote + '\n';
-        }).join('');
-        
-        // Calcul des statistiques globales
-        const totalWithPosition = result.categories.flatMap(cat => 
-          cat.keywords.filter(k => k.performance_metrics?.position > 0)
-        ).length;
-        
-        const avgPosition = totalWithPosition > 0 ? 
-          result.categories.flatMap(cat => 
-            cat.keywords.filter(k => k.performance_metrics?.position > 0)
-              .map(k => k.performance_metrics.position)
-          ).reduce((sum, pos) => sum + pos, 0) / totalWithPosition : null;
-        
-        return {
-          content: [
-            {
-              type: "text",
-              text: `📂 **MOTS-CLÉS PAR CATÉGORIES - SITE #${result.website_id}**\n\n` +
-                    `📅 **Période analysée :** ${result.period_days} jours\n` +
-                    `📊 **Métriques GSC :** ${result.include_performance ? 'Incluses' : 'Désactivées'}\n\n` +
-                    `📈 **Résumé global :**\n` +
-                    `• Total mots-clés : ${result.summary.total_keywords.toLocaleString()}\n` +
-                    `• Catégories : ${result.summary.total_categories}\n` +
-                    `• Non catégorisés : ${result.summary.uncategorized_keywords}\n` +
-                    `• Avec position GSC : ${totalWithPosition}\n` +
-                    (avgPosition ? `• Position moyenne : #${avgPosition.toFixed(1)}\n` : '') +
-                    `\n${categoriesText}\n` +
-                    `📅 **Dernière mise à jour :** ${new Date(result.last_updated).toLocaleString('fr-FR')}\n\n` +
-                    `💡 **Astuce :** Utilisez ces données pour identifier vos thématiques SEO les plus performantes !`
+                    `🏆 **Top performeurs :**\n${topKeywords}` +
+                    categoriesSection
             }
           ]
         };
@@ -545,7 +482,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
 // Lancement du serveur
 async function runServer() {
-  console.error("[Referencime MCP] 🚀 Démarrage du serveur MCP Referencime...");
+  console.error("[Referencime MCP] 🚀 Démarrage du serveur MCP Referencime v2.0...");
   
   // Vérification de la clé API au démarrage
   try {
@@ -561,9 +498,9 @@ async function runServer() {
   const transport = new StdioServerTransport();
   await server.connect(transport);
   
-  console.error("[Referencime MCP] ✅ Serveur MCP Referencime prêt pour Claude Desktop");
-  console.error("[Referencime MCP] 🛠️  7 outils d'analyse SEO disponibles");
-  console.error("[Referencime MCP] 🔗 Connecté aux vraies APIs WordPress Referencime");
+  console.error("[Referencime MCP] ✅ Serveur MCP Referencime prêt");
+  console.error("[Referencime MCP] 🛠️  5 outils d'analyse SEO disponibles (architecture refactorisée)");
+  console.error("[Referencime MCP] 🔗 Connecté aux APIs WordPress Referencime");
 }
 
 // Point d'entrée
