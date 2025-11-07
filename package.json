@@ -1,6 +1,6 @@
 {
   "name": "@referencime/mcp-server",
-  "version": "2.0.3",
+  "version": "2.0.6",
   "description": "Referencime MCP Server for Claude Desktop - Connect your SEO data to Claude",
   "type": "module",
   "main": "./bin/start.js",

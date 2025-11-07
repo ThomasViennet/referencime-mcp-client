@@ -44,6 +44,26 @@ const WebsiteSummaryArgsSchema = z.object({
   compare_end_date: z.string().optional().describe('Date de fin de comparaison au format YYYY-MM-DD')
 });
 
+const GetNetlinkingSpotsRankingArgsSchema = z.object({
+  website_id: z.number().describe('ID du site web dans Referencime'),
+  category_id: z.string().optional().describe('Filtrer par catégorie de mots-clés'),
+  min_price: z.number().optional().describe('Prix minimum'),
+  max_price: z.number().optional().describe('Prix maximum'),
+  platform_id: z.number().optional().describe('Filtrer par plateforme'),
+  keywords: z.string().optional().describe('Filtrer par mots-clés (format: mot1||mot2||...)'),
+  limit: z.number().optional().default(20).describe('Nombre de spots à retourner'),
+  sort_by: z.string().optional().default('semantic_proximity').describe('Champ de tri (semantic_proximity, traffic, visibility, keywords, position, price)')
+});
+
+const IdentifyNetlinkingTargetsArgsSchema = z.object({
+  website_id: z.number().describe('ID du site web dans Referencime'),
+  min_position: z.number().optional().default(4).describe('Position minimale (par défaut: 4)'),
+  max_position: z.number().optional().default(10).describe('Position maximale (par défaut: 10)'),
+  min_volume: z.number().optional().default(100).describe('Volume de recherche minimum'),
+  limit: z.number().optional().default(20).describe('Nombre de keywords à retourner'),
+  spots_per_keyword: z.number().optional().default(3).describe('Nombre de spots recommandés par keyword')
+});
+
 // Configuration du serveur
 const server = new Server(
   {
@@ -97,6 +117,12 @@ async function callReferencimeAPI(toolName, args) {
         break;
       case 'get_website_performance_summary':
         endpoint = '/ai/get-website-performance-summary';
+        break;
+      case 'get_netlinking_spots_ranking':
+        endpoint = '/ai/get-netlinking-spots-ranking';
+        break;
+      case 'identify_netlinking_targets':
+        endpoint = '/ai/identify-netlinking-targets';
         break;
       default:
         throw new Error(`Outil inconnu: ${toolName}`);
@@ -155,6 +181,16 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
         name: "get_website_performance_summary",
         description: "Tableau de bord complet des performances SEO d'un site web : métriques globales GSC, distribution des positions et mots-clés les plus performants.",
         inputSchema: zodToJsonSchema(WebsiteSummaryArgsSchema),
+      },
+      {
+        name: "identify_netlinking_targets",
+        description: "🎯 OUTIL PRIORITAIRE pour stratégie netlinking : Identifie automatiquement vos mots-clés en position 4-10 avec fort volume et leurs spots pertinents. À utiliser quand l'utilisateur demande d'améliorer son netlinking, d'optimiser ses backlinks, de trouver des opportunités SEO rapides, ou de cibler des mots-clés pour des backlinks. Retourne keywords + positions + volumes + spots recommandés sans projections spéculatives. Approche factuelle sans garantie de gain.",
+        inputSchema: zodToJsonSchema(IdentifyNetlinkingTargetsArgsSchema),
+      },
+      {
+        name: "get_netlinking_spots_ranking",
+        description: "Récupère le classement complet de TOUS les spots de netlinking disponibles sans se limiter aux positions 4-10. Utile pour explorer l'ensemble du catalogue de spots ou pour filtrer par catégorie/prix/plateforme spécifique. Analyse automatiquement tous les mots-clés du site et retourne les spots triés par proximité sémantique avec prix et plateformes disponibles.",
+        inputSchema: zodToJsonSchema(GetNetlinkingSpotsRankingArgsSchema),
       },
     ],
   };
@@ -353,6 +389,159 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         };
       }
 
+      case "get_netlinking_spots_ranking": {
+        const parsed = GetNetlinkingSpotsRankingArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Arguments invalides pour get_netlinking_spots_ranking: ${parsed.error.message}`);
+        }
+        
+        const result = await callReferencimeAPI(name, parsed.data);
+        
+        if (result.total_spots_found === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `🎯 **CLASSEMENT DES SPOTS DE NETLINKING - SITE #${result.website_id}**\n\n` +
+                      `⚠️ **Aucun spot trouvé**\n\n` +
+                      `📊 **Mots-clés analysés :** ${result.statistics.total_keywords_analyzed}\n\n` +
+                      `💡 **Suggestion :** Ajustez les filtres ou attendez que plus de données SERP soient collectées.`
+              }
+            ]
+          };
+        }
+        
+        // Formatage des spots
+        const spotsText = result.spots.slice(0, 15).map((spot, i) => {
+          const platforms = spot.platforms.map(p => 
+            `${p.name} (${p.price}€)`
+          ).join(', ');
+          
+          return `**${spot.rank}. ${spot.domain}**\n` +
+                 `   • 🎯 Proximité sémantique : ${spot.proximity_score}%\n` +
+                 `   • 📊 Couverture mots-clés : ${spot.keywords_coverage}%\n` +
+                 `   • 🚀 Trafic potentiel : ${spot.metrics.traffic_volume.toLocaleString()} visites/mois\n` +
+                 `   • 💰 Prix minimum : ${spot.min_price}€\n` +
+                 `   • 📍 Position moyenne : #${spot.metrics.avg_position}\n` +
+                 `   • 🔑 Mots-clés positionnés : ${spot.metrics.keywords_count}\n` +
+                 `   • 🏪 Plateformes : ${platforms || 'Aucune'}`;
+        }).join('\n\n');
+        
+        const truncated = result.spots_returned > 15 ? 
+          `\n\n... et ${result.spots_returned - 15} autres spots` : '';
+        
+        // Formatage des filtres appliqués
+        let filtersText = '';
+        if (result.filters_applied) {
+          const filters = [];
+          if (result.filters_applied.category) filters.push(`Catégorie: ${result.filters_applied.category}`);
+          if (result.filters_applied.price_range) filters.push(`Prix: ${result.filters_applied.price_range}€`);
+          if (result.filters_applied.platform_id) filters.push(`Plateforme ID: ${result.filters_applied.platform_id}`);
+          if (result.filters_applied.keywords) filters.push(`Mots-clés: ${result.filters_applied.keywords}`);
+          
+          if (filters.length > 0) {
+            filtersText = `\n🔍 **Filtres appliqués :** ${filters.join(' | ')}\n`;
+          }
+        }
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `🎯 **CLASSEMENT DES SPOTS DE NETLINKING - SITE #${result.website_id}**\n\n` +
+                    `📊 **Résumé :**\n` +
+                    `• Spots trouvés : ${result.total_spots_found}\n` +
+                    `• Spots affichés : ${result.spots_returned}\n` +
+                    `• Prix moyen : ${result.statistics.average_price}€\n` +
+                    `• Prix médian : ${result.statistics.median_price}€\n` +
+                    `• Mots-clés analysés : ${result.statistics.total_keywords_analyzed}\n` +
+                    filtersText +
+                    `\n🏆 **Top spots par proximité sémantique :**\n\n${spotsText}${truncated}\n\n` +
+                    `💡 **Conseil :** Ces spots sont les plus pertinents pour votre stratégie de netlinking basée sur la proximité thématique avec vos mots-clés !`
+            }
+          ]
+        };
+      }
+
+      case "identify_netlinking_targets": {
+        const parsed = IdentifyNetlinkingTargetsArgsSchema.safeParse(args);
+        if (!parsed.success) {
+          throw new Error(`Arguments invalides pour identify_netlinking_targets: ${parsed.error.message}`);
+        }
+        
+        const result = await callReferencimeAPI(name, parsed.data);
+        
+        if (result.keywords_count === 0) {
+          return {
+            content: [
+              {
+                type: "text",
+                text: `🎯 **MOTS-CLÉS À CONSOLIDER - SITE #${result.website_id}**\n\n` +
+                      `⚠️ **Aucun mot-clé trouvé**\n\n` +
+                      `📊 **Filtres :** Position ${result.filters.position_range}, Volume min: ${result.filters.min_volume}\n` +
+                      `📅 **Période analysée :** ${result.analysis_period.start_date} → ${result.analysis_period.end_date}\n\n` +
+                      `💡 **Suggestion :** Ajustez les filtres (position ou volume minimum).`
+              }
+            ]
+          };
+        }
+        
+        // Fonction pour catégoriser le volume
+        const getVolumeLabel = (category) => {
+          switch(category) {
+            case 'very_high': return 'Très élevé';
+            case 'high': return 'Élevé';
+            case 'medium': return 'Moyen';
+            case 'low': return 'Faible';
+            default: return 'N/A';
+          }
+        };
+        
+        // Formatage des keywords
+        const keywordsText = result.keywords.slice(0, 15).map((kw, i) => {
+          let text = `**${i + 1}. ${kw.keyword}**\n`;
+          text += `   📍 Position actuelle : #${kw.current_position}\n`;
+          text += `   🔍 Volume de recherche : ${kw.search_volume.toLocaleString()}/mois (${getVolumeLabel(kw.volume_category)})\n`;
+          
+          if (kw.recommended_spots && kw.recommended_spots.length > 0) {
+            text += `   \n   📌 Spots pertinents disponibles :\n`;
+            kw.recommended_spots.forEach(spot => {
+              text += `   • ${spot.domain}`;
+              if (spot.proximity_score > 0) {
+                text += ` (${spot.proximity_score}% pertinence)`;
+              }
+              text += ` - ${spot.min_price}€ sur ${spot.platform}\n`;
+            });
+          } else {
+            text += `   \n   ⚠️ Aucun spot pertinent identifié\n`;
+          }
+          
+          return text;
+        }).join('\n');
+        
+        const truncated = result.keywords_count > 15 ? 
+          `\n... et ${result.keywords_count - 15} autres mots-clés` : '';
+        
+        return {
+          content: [
+            {
+              type: "text",
+              text: `🎯 **MOTS-CLÉS À CONSOLIDER - SITE #${result.website_id}**\n\n` +
+                    `📅 **Période analysée :** ${result.analysis_period.start_date} → ${result.analysis_period.end_date} (${result.analysis_period.days} jours)\n` +
+                    `📊 **Filtres :** Position ${result.filters.position_range}, Volume min: ${result.filters.min_volume}\n\n` +
+                    `📈 **${result.keywords_count} mots-clés identifiés**\n\n` +
+                    `💡 Ces keywords sont déjà bien positionnés. Des backlinks de qualité \n` +
+                    `   pourraient aider à consolider ou améliorer ces positions.\n\n` +
+                    `🔍 **KEYWORDS PAR VOLUME :**\n\n${keywordsText}${truncated}\n\n` +
+                    `---\n` +
+                    `💡 **Note :** Les positions SEO dépendent de nombreux facteurs. \n` +
+                    `Ces recommandations identifient des opportunités de netlinking \n` +
+                    `pertinentes pour vos keywords les mieux positionnés.`
+            }
+          ]
+        };
+      }
+
       case "get_website_performance_summary": {
         const parsed = WebsiteSummaryArgsSchema.safeParse(args);
         if (!parsed.success) {
@@ -499,7 +688,7 @@ async function runServer() {
   await server.connect(transport);
   
   console.error("[Referencime MCP] ✅ Serveur MCP Referencime prêt");
-  console.error("[Referencime MCP] 🛠️  5 outils d'analyse SEO disponibles (architecture refactorisée)");
+  console.error("[Referencime MCP] 🛠️  7 outils d'analyse SEO disponibles (architecture refactorisée)");
   console.error("[Referencime MCP] 🔗 Connecté aux APIs WordPress Referencime");
 }
 
